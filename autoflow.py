@@ -45,20 +45,28 @@ class LicenseManager:
     @staticmethod
     def validate_key(key):
         """Lisans anahtarini dogrula. Format: AF-XXXX-XXXX-XXXX"""
-        if not key or len(key) != 16:
+        if not key:
             return False
+        key = key.strip().upper()
         parts = key.split('-')
-        if len(parts) != 4 or parts[0] != 'AF':
+        if len(parts) != 4:
             return False
-        # Basit checksum
-        code = parts[1] + parts[2] + parts[3]
-        total = sum(ord(c) for c in code)
-        return total % 7 < 5  # Cogu gecerli kodlari kabul et
+        if parts[0] != 'AF':
+            return False
+        # Her parca 4 karakter olmali
+        for p in parts[1:]:
+            if len(p) != 4:
+                return False
+            # Sadece harf ve rakam
+            if not p.isalnum():
+                return False
+        return True
 
     def activate(self, key):
         """Lisansi etkinlestir"""
+        key = key.strip().upper()
         if not self.validate_key(key):
-            return False, "Gecersiz lisans kodu"
+            return False, "Gecersiz lisans kodu!\nFormat: AF-XXXX-XXXX-XXXX"
         data = {
             'key': key,
             'machine': self.get_machine_id(),
