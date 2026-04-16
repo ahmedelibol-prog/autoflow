@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AutoFlow v9.0 - Otomatik Tekrar Yazilimi
-Windows resmi renkleri, tek slot, DPI-aware mouse
-ESC = Durdur
+AutoFlow v10.0 - Otomatik Tekrar Yazilimi
+Mouse konumu duzeltildi - direkt Windows API kullanimi
 """
 
 import tkinter as tk
@@ -14,15 +13,24 @@ import json
 import os
 import sys
 import ctypes
+from ctypes import wintypes
 
-# DPI AWARENESS - EN BASTA (mouse konumu icin cok onemli)
+# DPI AWARENESS - Program baslamadan ONCE ayarla
+# Per-Monitor V2 = en dogru piksel koordinatlari
 try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    ctypes.windll.user32.SetProcessDpiAwarenessContext(-4)
 except:
     try:
-        ctypes.windll.user32.SetProcessDPIAware()
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except:
-        pass
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except:
+            pass
+
+# Windows API
+user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
 
 
 def ensure_libs():
@@ -43,6 +51,79 @@ def ensure_libs():
 ensure_libs()
 import keyboard
 import mouse
+
+
+# ══════════════════════════════════════════
+#  WINDOWS DIRECT MOUSE API
+# ══════════════════════════════════════════
+class POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+def get_cursor_pos():
+    """Fare konumunu gercek piksel cinsinden al (DPI-aware)"""
+    pt = POINT()
+    user32.GetCursorPos(ctypes.byref(pt))
+    return pt.x, pt.y
+
+
+def set_cursor_pos(x, y):
+    """Fareyi gercek piksel konumuna tasi (DPI-aware)"""
+    user32.SetCursorPos(int(x), int(y))
+
+
+# Windows SendInput
+INPUT_MOUSE = 0
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
+MOUSEEVENTF_MIDDLEDOWN = 0x0020
+MOUSEEVENTF_MIDDLEUP = 0x0040
+MOUSEEVENTF_WHEEL = 0x0800
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long),
+                ("mouseData", ctypes.c_ulong), ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+
+class MINPUT(ctypes.Structure):
+    class _U(ctypes.Union):
+        _fields_ = [("mi", MOUSEINPUT)]
+    _fields_ = [("type", ctypes.c_ulong), ("u", _U)]
+
+
+def mouse_btn_event(flag):
+    """Fare dugmesi olayini gonder - konumdan bagimsiz"""
+    inp = MINPUT()
+    inp.type = INPUT_MOUSE
+    inp.u.mi.dx = 0
+    inp.u.mi.dy = 0
+    inp.u.mi.mouseData = 0
+    inp.u.mi.dwFlags = flag
+    inp.u.mi.time = 0
+    inp.u.mi.dwExtraInfo = ctypes.pointer(ctypes.c_ulong(0))
+    user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+
+def mouse_wheel(delta):
+    """Fare tekerlegi"""
+    inp = MINPUT()
+    inp.type = INPUT_MOUSE
+    inp.u.mi.dx = 0
+    inp.u.mi.dy = 0
+    inp.u.mi.mouseData = int(delta * 120)
+    inp.u.mi.dwFlags = MOUSEEVENTF_WHEEL
+    inp.u.mi.time = 0
+    inp.u.mi.dwExtraInfo = ctypes.pointer(ctypes.c_ulong(0))
+    user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+
+BTN_DOWN = {'left': MOUSEEVENTF_LEFTDOWN, 'right': MOUSEEVENTF_RIGHTDOWN,
+            'middle': MOUSEEVENTF_MIDDLEDOWN}
+BTN_UP = {'left': MOUSEEVENTF_LEFTUP, 'right': MOUSEEVENTF_RIGHTUP,
+          'middle': MOUSEEVENTF_MIDDLEUP}
 
 
 # ══════════════════════════════════════════
@@ -67,13 +148,33 @@ class MacroEngine:
 
         keyboard.start_recording()
 
+        # Fare icin ozel kayit - her move olayinda GERCEK konumu al
         self._mouse_recorded = []
+        self._last_move_rec_time = 0
         mouse.hook(self._mouse_hook)
 
         self._esc_hook = keyboard.on_press_key('esc', self._esc_pressed, suppress=False)
 
     def _mouse_hook(self, event):
-        if self.recording:
+        if not self.recording:
+            return
+
+        cls_name = event.__class__.__name__
+
+        # Move olaylarinda GERCEK piksel konumunu al (Windows API ile)
+        if cls_name == 'MoveEvent':
+            # Hizli hareket kaydi - 15ms'de bir
+            now = time.time()
+            if now - self._last_move_rec_time < 0.015:
+                return
+            self._last_move_rec_time = now
+
+            # DPI-aware gercek konum
+            real_x, real_y = get_cursor_pos()
+            # Yeni event olustur (gercek koordinatla)
+            new_event = mouse.MoveEvent(x=real_x, y=real_y, time=event.time)
+            self._mouse_recorded.append(new_event)
+        else:
             self._mouse_recorded.append(event)
 
     def _esc_pressed(self, e):
@@ -120,7 +221,8 @@ class MacroEngine:
         self.playing = True
         self.stop_flag = False
 
-        self._esc_hook = keyboard.on_press_key('esc', lambda e: self._esc_stop(), suppress=False)
+        self._esc_hook = keyboard.on_press_key('esc', lambda e: self._esc_stop(),
+                                                suppress=False)
 
         all_events = []
         for e in self.kb_events:
@@ -186,7 +288,7 @@ class MacroEngine:
                 keyboard.press(event.scan_code)
             elif event.event_type == 'up':
                 keyboard.release(event.scan_code)
-        except Exception:
+        except:
             try:
                 if event.name:
                     if event.event_type == 'down':
@@ -197,29 +299,31 @@ class MacroEngine:
                 pass
 
     def _play_mouse(self, event):
-        """DPI-aware mouse playback - Windows SetCursorPos kullanir"""
+        """Direkt Windows API ile fare oynatma - GERCEK PIKSEL"""
         cls_name = event.__class__.__name__
 
         if cls_name == 'MoveEvent':
-            # DIRECT Windows API - absolute pixel coordinates
-            try:
-                ctypes.windll.user32.SetCursorPos(int(event.x), int(event.y))
-            except:
-                mouse.move(event.x, event.y, absolute=True, duration=0)
+            # DIREKT set_cursor_pos - DPI-aware, piksel piksel
+            set_cursor_pos(event.x, event.y)
 
         elif cls_name == 'ButtonEvent':
             btn = event.button
             et = event.event_type
 
-            if et == 'down':
-                mouse.press(button=btn)
-            elif et == 'up':
-                mouse.release(button=btn)
-            elif et == 'double':
-                mouse.double_click(button=btn)
+            if et == 'down' and btn in BTN_DOWN:
+                mouse_btn_event(BTN_DOWN[btn])
+            elif et == 'up' and btn in BTN_UP:
+                mouse_btn_event(BTN_UP[btn])
+            elif et == 'double' and btn in BTN_DOWN:
+                # Cift tiklama = 2 kez bas-birak
+                mouse_btn_event(BTN_DOWN[btn])
+                mouse_btn_event(BTN_UP[btn])
+                time.sleep(0.05)
+                mouse_btn_event(BTN_DOWN[btn])
+                mouse_btn_event(BTN_UP[btn])
 
         elif cls_name == 'WheelEvent':
-            mouse.wheel(event.delta)
+            mouse_wheel(event.delta)
 
     def stop(self):
         self.stop_flag = True
@@ -233,7 +337,7 @@ class MacroEngine:
 
     def save(self, path):
         data = {
-            'v': '9',
+            'v': '10',
             'kb': [self._kb_to_dict(e) for e in self.kb_events],
             'mouse': [self._mouse_to_dict(e) for e in self.mouse_events]
         }
@@ -292,22 +396,21 @@ class MacroEngine:
 
 
 # ══════════════════════════════════════════
-#  WINDOWS RESMI RENK ARAYUZU
+#  ARAYUZ
 # ══════════════════════════════════════════
 class AutoFlowApp:
-    # Windows 11 resmi renkler
-    BG = "#f3f3f3"          # Windows arka plan
-    CARD = "#ffffff"         # Kart beyazi
-    WIN_BLUE = "#0078d4"     # Windows accent mavi
+    BG = "#f3f3f3"
+    CARD = "#ffffff"
+    WIN_BLUE = "#0078d4"
     WIN_BLUE_HOVER = "#106ebe"
     WIN_BLUE_LIGHT = "#e5f1fb"
-    WIN_RED = "#c42b1c"      # Windows kirmizi
+    WIN_RED = "#c42b1c"
     WIN_RED_HOVER = "#a82a1f"
-    WIN_GREEN = "#107c10"    # Windows yesil
+    WIN_GREEN = "#107c10"
     WIN_GREEN_HOVER = "#0e6e0e"
     WIN_ORANGE = "#ca5010"
-    TEXT = "#323130"         # Windows koyu metin
-    TEXT2 = "#605e5c"         # Windows gri metin
+    TEXT = "#323130"
+    TEXT2 = "#605e5c"
     TEXT3 = "#a19f9d"
     BORDER = "#d1d1d1"
     BORDER_LIGHT = "#edebe9"
@@ -341,9 +444,7 @@ class AutoFlowApp:
         main = tk.Frame(self.root, bg=self.BG, padx=30, pady=24)
         main.pack(fill='both', expand=True)
 
-        # ═══════════════════════════════
-        #  BASLIK
-        # ═══════════════════════════════
+        # BASLIK
         hdr = tk.Frame(main, bg=self.BG)
         hdr.pack(fill='x', pady=(0, 20))
 
@@ -358,9 +459,7 @@ class AutoFlowApp:
         tk.Label(hdr, text="Otomatik Tekrar Yazılımı", font=("Segoe UI", 11),
                  fg=self.TEXT2, bg=self.BG).pack(side='left', padx=(16, 0), pady=(14, 0))
 
-        # ═══════════════════════════════
-        #  TALIMAT KUTUSU
-        # ═══════════════════════════════
+        # TALIMAT
         info_card = tk.Frame(main, bg=self.WIN_BLUE_LIGHT,
                              highlightbackground=self.WIN_BLUE, highlightthickness=1)
         info_card.pack(fill='x', pady=(0, 20))
@@ -376,20 +475,16 @@ class AutoFlowApp:
                  font=("Segoe UI", 9), fg=self.TEXT, bg=self.WIN_BLUE_LIGHT,
                  justify='left').pack(anchor='w', pady=(4, 0))
 
-        # ═══════════════════════════════
-        #  TEK SLOT - KAYIT 1
-        # ═══════════════════════════════
+        # SLOT
         slot_card = tk.Frame(main, bg=self.CARD,
                              highlightbackground=self.BORDER, highlightthickness=1)
         slot_card.pack(fill='x', pady=(0, 16))
         slot_inner = tk.Frame(slot_card, bg=self.CARD, padx=20, pady=16)
         slot_inner.pack(fill='x')
 
-        # Ust
         top = tk.Frame(slot_inner, bg=self.CARD)
         top.pack(fill='x', pady=(0, 14))
 
-        # Mavi dikdortgen + KAYIT 1
         canvas = tk.Canvas(top, width=4, height=24, bg=self.CARD, highlightthickness=0)
         canvas.pack(side='left', padx=(0, 12))
         canvas.create_rectangle(0, 0, 4, 24, fill=self.WIN_BLUE, outline="")
@@ -401,7 +496,7 @@ class AutoFlowApp:
                                   font=("Segoe UI", 10), fg=self.TEXT2, bg=self.CARD)
         self.lbl_slot.pack(side='right')
 
-        # Ana butonlar - KAYDET / OYNAT - BUYUK
+        # Ana butonlar
         main_btns = tk.Frame(slot_inner, bg=self.CARD)
         main_btns.pack(fill='x', pady=(0, 10))
 
@@ -421,7 +516,7 @@ class AutoFlowApp:
             command=self._play)
         self.btn_play.pack(side='left', fill='x', expand=True, padx=(5, 0))
 
-        # Dosya butonlari - KAYDET / AC
+        # Dosya butonlari
         file_btns = tk.Frame(slot_inner, bg=self.CARD)
         file_btns.pack(fill='x')
 
@@ -441,16 +536,13 @@ class AutoFlowApp:
             command=self._load_file)
         self.btn_load.pack(side='left', fill='x', expand=True, padx=(4, 0))
 
-        # ═══════════════════════════════
-        #  AYARLAR
-        # ═══════════════════════════════
+        # AYARLAR
         set_card = tk.Frame(main, bg=self.CARD,
                             highlightbackground=self.BORDER, highlightthickness=1)
         set_card.pack(fill='x', pady=(0, 16))
         set_inner = tk.Frame(set_card, bg=self.CARD, padx=20, pady=14)
         set_inner.pack(fill='x')
 
-        # Tekrar
         r1 = tk.Frame(set_inner, bg=self.CARD)
         r1.pack(fill='x', pady=(0, 12))
 
@@ -473,7 +565,6 @@ class AutoFlowApp:
                  highlightbackground=self.BORDER, highlightcolor=self.WIN_BLUE,
                  justify='center').pack(side='left', padx=(10, 0), ipady=5)
 
-        # Hiz
         r2 = tk.Frame(set_inner, bg=self.CARD)
         r2.pack(fill='x')
 
@@ -489,21 +580,18 @@ class AutoFlowApp:
                       command=lambda x=v: self.speed_var.set(x)
                       ).pack(side='left', padx=2)
 
-        # ═══════════════════════════════
-        #  DURDUR
-        # ═══════════════════════════════
+        # DURDUR - BEYAZ YAZI
         self.btn_stop = tk.Button(main,
             text="⏹  DURDUR  (ESC tuşu)",
             font=("Segoe UI", 13, "bold"),
             bg=self.WIN_RED, fg="white",
             activebackground=self.WIN_RED_HOVER, activeforeground="white",
+            disabledforeground="white",
             relief='flat', cursor='hand2', bd=0, pady=14,
             command=self._stop, state='disabled')
         self.btn_stop.pack(fill='x', pady=(0, 16))
 
-        # ═══════════════════════════════
-        #  DURUM
-        # ═══════════════════════════════
+        # DURUM
         stat_card = tk.Frame(main, bg=self.CARD,
                              highlightbackground=self.BORDER, highlightthickness=1)
         stat_card.pack(fill='x')
@@ -528,12 +616,9 @@ class AutoFlowApp:
         self.progress = ttk.Progressbar(stat_inner, mode='determinate',
                                          style="Win.Horizontal.TProgressbar")
 
-        # Footer
-        tk.Label(main, text="AutoFlow v9.0",
+        tk.Label(main, text="AutoFlow v10.0",
                  font=("Segoe UI", 8), fg=self.TEXT3, bg=self.BG).pack(pady=(12, 0))
 
-    # ═══════════════════════════════════════
-    #  KAYIT
     # ═══════════════════════════════════════
     def _rec(self):
         if self.engine.recording or self.engine.playing:
@@ -581,9 +666,6 @@ class AutoFlowApp:
 
         self._enable_all()
 
-    # ═══════════════════════════════════════
-    #  OYNAT
-    # ═══════════════════════════════════════
     def _play(self):
         if self.engine.recording or self.engine.playing:
             return
@@ -621,16 +703,13 @@ class AutoFlowApp:
 
         self.engine.play(on_prog=self._prog, on_done=self._done)
 
-    # ═══════════════════════════════════════
-    #  DOSYAYA KAYDET
-    # ═══════════════════════════════════════
     def _save_file(self):
         if self.engine.recording or self.engine.playing:
             return
 
         path = self._slot_path()
         if not os.path.exists(path):
-            messagebox.showinfo("Boş Slot", "KAYIT 1 boş, kaydedilecek bir şey yok!")
+            messagebox.showinfo("Boş Slot", "KAYIT 1 boş!")
             return
 
         fp = filedialog.asksaveasfilename(
@@ -644,15 +723,11 @@ class AutoFlowApp:
                     data = json.load(f)
                 with open(fp, 'w') as f:
                     json.dump(data, f)
-                self.lbl_status.configure(text=f"✓ Kaydedildi: {os.path.basename(fp)}",
-                                           fg=self.WIN_GREEN)
-                self.lbl_detail.configure(text="Kayıt dosyaya yazıldı")
+                self.lbl_status.configure(text=f"✓ Kaydedildi", fg=self.WIN_GREEN)
+                self.lbl_detail.configure(text=os.path.basename(fp))
             except Exception as e:
                 messagebox.showerror("Hata", str(e))
 
-    # ═══════════════════════════════════════
-    #  DOSYADAN AC
-    # ═══════════════════════════════════════
     def _load_file(self):
         if self.engine.recording or self.engine.playing:
             return
@@ -673,7 +748,6 @@ class AutoFlowApp:
             except Exception as e:
                 messagebox.showerror("Hata", str(e))
 
-    # ═══════════════════════════════════════
     def _prog(self, cur, tot, lp):
         def u():
             self.progress['value'] = cur
