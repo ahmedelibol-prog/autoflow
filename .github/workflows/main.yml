@@ -19,11 +19,11 @@ jobs:
     
     - name: Kutuphaneleri Kur
       run: |
-        pip install pynput pyinstaller
+        pip install keyboard mouse pyinstaller
     
     - name: EXE Derle
       run: |
-        pyinstaller --onefile --noconsole --name "AutoFlow" --hidden-import pynput --hidden-import pynput.mouse._win32 --hidden-import pynput.keyboard._win32 autoflow.py
+        pyinstaller --onefile --noconsole --name "AutoFlow" --hidden-import keyboard --hidden-import mouse --uac-admin autoflow.py
     
     - name: EXE Yukle
       uses: actions/upload-artifact@v4
