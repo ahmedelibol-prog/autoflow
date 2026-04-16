@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AutoFlow v7.0 - Profesyonel EBYS Otomasyon
-keyboard + mouse kutuphaneleri ile tam destek
+AutoFlow v8.0 - Otomatik Tekrar Yazilimi
+4 slotlu profesyonel arayuz
 ESC = Durdur
 """
 
@@ -14,7 +14,6 @@ import json
 import os
 import sys
 
-# Kutuphane kontrolu
 def ensure_libs():
     need = []
     try:
@@ -35,6 +34,9 @@ import keyboard
 import mouse
 
 
+# ══════════════════════════════════════════
+#  MAKRO MOTORU
+# ══════════════════════════════════════════
 class MacroEngine:
     def __init__(self):
         self.recording = False
@@ -52,11 +54,14 @@ class MacroEngine:
         self.mouse_events = []
         self.recording = True
 
+        # Klavye kaydi
         keyboard.start_recording()
 
+        # Fare kaydi - mouse.record() yerine hook kullanarak
         self._mouse_recorded = []
         mouse.hook(self._mouse_hook)
 
+        # ESC dinleyici
         self._esc_hook = keyboard.on_press_key('esc', self._esc_pressed, suppress=False)
 
     def _mouse_hook(self, event):
@@ -111,6 +116,7 @@ class MacroEngine:
         # ESC ile durdurmak icin
         self._esc_hook = keyboard.on_press_key('esc', lambda e: self._esc_stop(), suppress=False)
 
+        # Tum olaylari zamana gore siralayip birlestir
         all_events = []
         for e in self.kb_events:
             all_events.append(('kb', e, e.time))
@@ -148,7 +154,7 @@ class MacroEngine:
                             self._play_kb(event)
                         else:
                             self._play_mouse(event)
-                    except:
+                    except Exception:
                         pass
 
                     if on_prog:
@@ -170,23 +176,41 @@ class MacroEngine:
         self.stop_flag = True
 
     def _play_kb(self, event):
-        if event.event_type == 'down':
-            keyboard.press(event.scan_code)
-        elif event.event_type == 'up':
-            keyboard.release(event.scan_code)
+        """Klavye olayini oynat - scan_code ile en guvenilir"""
+        try:
+            if event.event_type == 'down':
+                keyboard.press(event.scan_code)
+            elif event.event_type == 'up':
+                keyboard.release(event.scan_code)
+        except Exception:
+            # Yedek: name ile dene
+            try:
+                if event.name:
+                    if event.event_type == 'down':
+                        keyboard.press(event.name)
+                    elif event.event_type == 'up':
+                        keyboard.release(event.name)
+            except:
+                pass
 
     def _play_mouse(self, event):
+        """Fare olayini oynat - her olay tipi icin"""
         cls_name = event.__class__.__name__
 
         if cls_name == 'MoveEvent':
-            mouse.move(event.x, event.y)
+            mouse.move(event.x, event.y, absolute=True, duration=0)
+
         elif cls_name == 'ButtonEvent':
-            if event.event_type == 'down':
-                mouse.press(event.button)
-            elif event.event_type == 'up':
-                mouse.release(event.button)
-            elif event.event_type == 'double':
-                mouse.double_click(event.button)
+            btn = event.button
+            et = event.event_type
+
+            if et == 'down':
+                mouse.press(button=btn)
+            elif et == 'up':
+                mouse.release(button=btn)
+            elif et == 'double':
+                mouse.double_click(button=btn)
+
         elif cls_name == 'WheelEvent':
             mouse.wheel(event.delta)
 
@@ -202,7 +226,7 @@ class MacroEngine:
 
     def save(self, path):
         data = {
-            'v': '7',
+            'v': '8',
             'kb': [self._kb_to_dict(e) for e in self.kb_events],
             'mouse': [self._mouse_to_dict(e) for e in self.mouse_events]
         }
@@ -214,13 +238,14 @@ class MacroEngine:
             d = json.load(f)
         self.kb_events = [self._dict_to_kb(x) for x in d.get('kb', [])]
         self.mouse_events = [self._dict_to_mouse(x) for x in d.get('mouse', [])]
+        self.mouse_events = [e for e in self.mouse_events if e is not None]
         return self.event_count()
 
     def _kb_to_dict(self, e):
         return {
             'event_type': e.event_type,
             'scan_code': e.scan_code,
-            'name': e.name,
+            'name': e.name if e.name else '',
             'time': e.time
         }
 
@@ -228,7 +253,7 @@ class MacroEngine:
         ke = keyboard.KeyboardEvent(
             event_type=d['event_type'],
             scan_code=d['scan_code'],
-            name=d.get('name')
+            name=d.get('name') or None
         )
         ke.time = d['time']
         return ke
@@ -247,33 +272,32 @@ class MacroEngine:
     def _dict_to_mouse(self, d):
         cls_name = d['cls']
         t = d['time']
-        if cls_name == 'MoveEvent':
-            e = mouse.MoveEvent(x=d['x'], y=d['y'], time=t)
-        elif cls_name == 'ButtonEvent':
-            e = mouse.ButtonEvent(event_type=d['event_type'], button=d['button'], time=t)
-        elif cls_name == 'WheelEvent':
-            e = mouse.WheelEvent(delta=d['delta'], time=t)
-        else:
+        try:
+            if cls_name == 'MoveEvent':
+                return mouse.MoveEvent(x=d['x'], y=d['y'], time=t)
+            elif cls_name == 'ButtonEvent':
+                return mouse.ButtonEvent(event_type=d['event_type'], button=d['button'], time=t)
+            elif cls_name == 'WheelEvent':
+                return mouse.WheelEvent(delta=d['delta'], time=t)
+        except:
             return None
-        return e
+        return None
 
 
 # ══════════════════════════════════════════
 #  PROFESYONEL ARAYUZ
 # ══════════════════════════════════════════
 class AutoFlowApp:
-    # Renkler
-    BG = "#1e293b"       # Koyu arka plan
-    BG2 = "#334155"      # Kart arka plan
-    BG3 = "#475569"      # Input arka plan
-    PRIMARY = "#3b82f6"  # Mavi
-    SUCCESS = "#10b981"  # Yesil
-    DANGER = "#ef4444"   # Kirmizi
-    WARNING = "#f59e0b"  # Turuncu
+    BG = "#1e293b"
+    BG2 = "#334155"
+    BG3 = "#475569"
+    PRIMARY = "#3b82f6"
+    SUCCESS = "#10b981"
+    DANGER = "#ef4444"
+    WARNING = "#f59e0b"
     TEXT = "#f1f5f9"
     TEXT2 = "#cbd5e1"
     TEXT3 = "#94a3b8"
-    BORDER = "#475569"
 
     SLOT_COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b"]
     SLOT_NAMES = ["KAYIT 1", "KAYIT 2", "KAYIT 3", "KAYIT 4"]
@@ -307,74 +331,62 @@ class AutoFlowApp:
         main = tk.Frame(self.root, bg=self.BG, padx=24, pady=20)
         main.pack(fill='both', expand=True)
 
-        # ═══════════════════════════════
-        #  BASLIK - BUYUK VE DIKKATA CEKICI
-        # ═══════════════════════════════
+        # BASLIK
         hdr = tk.Frame(main, bg=self.BG)
-        hdr.pack(fill='x', pady=(0, 20))
+        hdr.pack(fill='x', pady=(0, 16))
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side='left')
-
         tk.Label(title_frame, text="Auto", font=("Segoe UI", 28, "bold"),
                  fg=self.TEXT, bg=self.BG).pack(side='left')
         tk.Label(title_frame, text="Flow", font=("Segoe UI", 28, "bold"),
                  fg=self.PRIMARY, bg=self.BG).pack(side='left')
 
-        tk.Label(hdr, text="EBYS Otomasyon Sistemi", font=("Segoe UI", 11),
+        tk.Label(hdr, text="Otomatik Tekrar Yazılımı", font=("Segoe UI", 11),
                  fg=self.TEXT3, bg=self.BG).pack(side='left', padx=(16, 0), pady=(14, 0))
 
-        # ═══════════════════════════════
-        #  TALIMAT KUTUSU
-        # ═══════════════════════════════
+        # TALIMAT
         info_card = tk.Frame(main, bg="#1e3a5f", highlightbackground=self.PRIMARY,
                              highlightthickness=1)
-        info_card.pack(fill='x', pady=(0, 20))
+        info_card.pack(fill='x', pady=(0, 16))
         info_inner = tk.Frame(info_card, bg="#1e3a5f", padx=16, pady=10)
         info_inner.pack(fill='x')
 
         tk.Label(info_inner, text="NASIL KULLANILIR?", font=("Segoe UI", 9, "bold"),
                  fg="#60a5fa", bg="#1e3a5f").pack(anchor='w')
         tk.Label(info_inner,
-                 text="1) Bir slotta KAYDET butonuna basın    "
-                      "2) EBYS'de işlemi bir kez yapın    "
-                      "3) ESC tuşuna basın\n"
-                      "4) Tekrar sayısını girin    "
-                      "5) OYNAT butonuna basın - otomatik tekrar edecek",
+                 text="1) KAYDET butonuna basın   2) İşlemi bir kez yapın   3) ESC'e basın\n"
+                      "4) Tekrar sayısını girin   5) OYNAT butonuna basın — otomatik tekrar eder",
                  font=("Segoe UI", 9), fg=self.TEXT2, bg="#1e3a5f",
                  justify='left').pack(anchor='w', pady=(4, 0))
 
-        # ═══════════════════════════════
-        #  4 SLOT - BUYUK KARTLAR
-        # ═══════════════════════════════
+        # SLOT BASLIGI
         tk.Label(main, text="KAYIT SLOTLARI", font=("Segoe UI", 10, "bold"),
                  fg=self.TEXT3, bg=self.BG).pack(anchor='w', pady=(0, 8))
 
         slots_container = tk.Frame(main, bg=self.BG)
-        slots_container.pack(fill='x', pady=(0, 16))
+        slots_container.pack(fill='x', pady=(0, 14))
 
         self.slot_labels = []
-        self.slot_play_btns = []
         self.slot_rec_btns = []
+        self.slot_play_btns = []
+        self.slot_save_btns = []
         self.slot_load_btns = []
 
         for i in range(4):
             color = self.SLOT_COLORS[i]
 
-            # Slot karti
-            card = tk.Frame(slots_container, bg=self.BG2, highlightbackground=color,
-                            highlightthickness=2)
+            card = tk.Frame(slots_container, bg=self.BG2,
+                            highlightbackground=color, highlightthickness=2)
             card.pack(fill='x', pady=4)
-            inner = tk.Frame(card, bg=self.BG2, padx=16, pady=12)
+            inner = tk.Frame(card, bg=self.BG2, padx=14, pady=10)
             inner.pack(fill='x')
 
-            # Ust: isim ve durum
+            # Ust
             top = tk.Frame(inner, bg=self.BG2)
-            top.pack(fill='x', pady=(0, 10))
+            top.pack(fill='x', pady=(0, 8))
 
-            # Renk dairesi
-            canvas = tk.Canvas(top, width=14, height=14, bg=self.BG2,
-                              highlightthickness=0)
+            canvas = tk.Canvas(top, width=14, height=14, bg=self.BG2, highlightthickness=0)
             canvas.pack(side='left', padx=(0, 10))
             canvas.create_oval(2, 2, 12, 12, fill=color, outline="")
 
@@ -386,52 +398,55 @@ class AutoFlowApp:
             lbl.pack(side='right')
             self.slot_labels.append(lbl)
 
-            # Alt: butonlar - BUYUK VE NET
+            # Butonlar - 4 tane: KAYDET, OYNAT, KAYIT ET (dosyaya), AC (dosyadan)
             btns = tk.Frame(inner, bg=self.BG2)
             btns.pack(fill='x')
 
-            btn_rec = tk.Button(btns,
-                text="● KAYDET",
-                font=("Segoe UI", 11, "bold"),
+            btn_rec = tk.Button(btns, text="● KAYDET",
+                font=("Segoe UI", 10, "bold"),
                 bg=self.DANGER, fg="white",
                 activebackground="#dc2626", activeforeground="white",
-                relief='flat', cursor='hand2', bd=0, pady=10,
+                relief='flat', cursor='hand2', bd=0, pady=9,
                 command=lambda idx=i: self._rec_slot(idx))
-            btn_rec.pack(side='left', fill='x', expand=True, padx=(0, 4))
+            btn_rec.pack(side='left', fill='x', expand=True, padx=(0, 3))
             self.slot_rec_btns.append(btn_rec)
 
-            btn_play = tk.Button(btns,
-                text="▶ OYNAT",
-                font=("Segoe UI", 11, "bold"),
+            btn_play = tk.Button(btns, text="▶ OYNAT",
+                font=("Segoe UI", 10, "bold"),
                 bg=self.SUCCESS, fg="white",
                 activebackground="#059669", activeforeground="white",
-                relief='flat', cursor='hand2', bd=0, pady=10,
+                relief='flat', cursor='hand2', bd=0, pady=9,
                 command=lambda idx=i: self._play_slot(idx))
-            btn_play.pack(side='left', fill='x', expand=True, padx=4)
+            btn_play.pack(side='left', fill='x', expand=True, padx=3)
             self.slot_play_btns.append(btn_play)
 
-            btn_load = tk.Button(btns,
-                text="📁 AÇ",
-                font=("Segoe UI", 10, "bold"),
+            btn_save = tk.Button(btns, text="💾 KAYDET",
+                font=("Segoe UI", 9, "bold"),
                 bg=self.BG3, fg=self.TEXT,
                 activebackground="#64748b", activeforeground="white",
-                relief='flat', cursor='hand2', bd=0, pady=10, padx=12,
+                relief='flat', cursor='hand2', bd=0, pady=9, padx=10,
+                command=lambda idx=i: self._save_slot(idx))
+            btn_save.pack(side='left', padx=3)
+            self.slot_save_btns.append(btn_save)
+
+            btn_load = tk.Button(btns, text="📁 AÇ",
+                font=("Segoe UI", 9, "bold"),
+                bg=self.BG3, fg=self.TEXT,
+                activebackground="#64748b", activeforeground="white",
+                relief='flat', cursor='hand2', bd=0, pady=9, padx=10,
                 command=lambda idx=i: self._load_slot(idx))
-            btn_load.pack(side='left', padx=(4, 0))
+            btn_load.pack(side='left', padx=(3, 0))
             self.slot_load_btns.append(btn_load)
 
-        # ═══════════════════════════════
-        #  AYARLAR (TEKRAR + HIZ)
-        # ═══════════════════════════════
+        # AYARLAR
         tk.Label(main, text="AYARLAR", font=("Segoe UI", 10, "bold"),
                  fg=self.TEXT3, bg=self.BG).pack(anchor='w', pady=(0, 8))
 
         set_card = tk.Frame(main, bg=self.BG2)
-        set_card.pack(fill='x', pady=(0, 16))
-        set_inner = tk.Frame(set_card, bg=self.BG2, padx=20, pady=14)
+        set_card.pack(fill='x', pady=(0, 14))
+        set_inner = tk.Frame(set_card, bg=self.BG2, padx=18, pady=12)
         set_inner.pack(fill='x')
 
-        # Tekrar
         r1 = tk.Frame(set_inner, bg=self.BG2)
         r1.pack(fill='x', pady=(0, 10))
 
@@ -452,7 +467,6 @@ class AutoFlowApp:
                  insertbackground=self.TEXT, relief='flat', bd=0,
                  justify='center').pack(side='left', padx=(10, 0), ipady=5)
 
-        # Hiz
         r2 = tk.Frame(set_inner, bg=self.BG2)
         r2.pack(fill='x')
 
@@ -468,9 +482,7 @@ class AutoFlowApp:
                       command=lambda x=v: self.speed_var.set(x)
                       ).pack(side='left', padx=2)
 
-        # ═══════════════════════════════
-        #  BUYUK DURDUR BUTONU
-        # ═══════════════════════════════
+        # BUYUK DURDUR BUTONU
         self.btn_stop = tk.Button(main,
             text="⏹  DURDUR  (ESC tuşu)",
             font=("Segoe UI", 13, "bold"),
@@ -478,11 +490,9 @@ class AutoFlowApp:
             activebackground="#dc2626", activeforeground="white",
             relief='flat', cursor='hand2', bd=0, pady=12,
             command=self._stop, state='disabled')
-        self.btn_stop.pack(fill='x', pady=(0, 16))
+        self.btn_stop.pack(fill='x', pady=(0, 14))
 
-        # ═══════════════════════════════
-        #  DURUM
-        # ═══════════════════════════════
+        # DURUM
         stat_card = tk.Frame(main, bg=self.BG2)
         stat_card.pack(fill='x')
         stat_inner = tk.Frame(stat_card, bg=self.BG2, padx=20, pady=12)
@@ -506,14 +516,13 @@ class AutoFlowApp:
         self.progress = ttk.Progressbar(stat_inner, mode='determinate',
                                          style="Success.Horizontal.TProgressbar")
 
-        # Alt bilgi
         footer = tk.Frame(main, bg=self.BG)
-        footer.pack(fill='x', pady=(12, 0))
-        tk.Label(footer, text="AutoFlow v7.0 — Lütfen yönetici olarak çalıştırın",
+        footer.pack(fill='x', pady=(10, 0))
+        tk.Label(footer, text="AutoFlow v8.0",
                  font=("Segoe UI", 8), fg=self.TEXT3, bg=self.BG).pack()
 
     # ═══════════════════════════════════════
-    #  KAYIT (SLOT)
+    #  KAYIT
     # ═══════════════════════════════════════
     def _rec_slot(self, idx):
         if self.engine.recording or self.engine.playing:
@@ -556,7 +565,7 @@ class AutoFlowApp:
                 name = self.SLOT_NAMES[idx]
                 n = self.engine.event_count()
                 self.lbl_status.configure(text=f"✓ {name} kaydedildi!", fg=self.SUCCESS)
-                self.lbl_detail.configure(text=f"{n} hareket kaydedildi — OYNAT ile çalıştırabilirsiniz")
+                self.lbl_detail.configure(text=f"{n} hareket — OYNAT ile çalıştırabilirsiniz")
             except Exception as e:
                 messagebox.showerror("Hata", str(e))
         else:
@@ -567,7 +576,7 @@ class AutoFlowApp:
         self._enable_all()
 
     # ═══════════════════════════════════════
-    #  OYNAT (SLOT)
+    #  OYNAT
     # ═══════════════════════════════════════
     def _play_slot(self, idx):
         if self.engine.recording or self.engine.playing:
@@ -576,8 +585,7 @@ class AutoFlowApp:
         path = self._slot_path(idx)
         if not os.path.exists(path):
             messagebox.showinfo("Boş Slot",
-                f"{self.SLOT_NAMES[idx]} boş!\n\n"
-                "Önce KAYDET butonuna basıp bir işlem kaydedin.")
+                f"{self.SLOT_NAMES[idx]} boş!\n\nÖnce KAYDET butonuna basıp işlem kaydedin.")
             return
 
         try:
@@ -609,14 +617,45 @@ class AutoFlowApp:
         self.engine.play(on_prog=self._prog, on_done=self._done)
 
     # ═══════════════════════════════════════
-    #  YUKLE (DOSYADAN)
+    #  KAYDET (dosyaya)
+    # ═══════════════════════════════════════
+    def _save_slot(self, idx):
+        if self.engine.recording or self.engine.playing:
+            return
+
+        path = self._slot_path(idx)
+        if not os.path.exists(path):
+            messagebox.showinfo("Boş Slot",
+                f"{self.SLOT_NAMES[idx]} boş, kaydedilecek bir şey yok!")
+            return
+
+        fp = filedialog.asksaveasfilename(
+            title=f"{self.SLOT_NAMES[idx]} - dosyaya kaydet",
+            defaultextension=".autoflow",
+            filetypes=[("AutoFlow Makro", "*.autoflow"), ("Hepsi", "*.*")])
+
+        if fp:
+            try:
+                # Slot dosyasini secilen yere kopyala
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                with open(fp, 'w') as f:
+                    json.dump(data, f)
+                self.lbl_status.configure(text=f"✓ Kaydedildi: {os.path.basename(fp)}",
+                                           fg=self.SUCCESS)
+                self.lbl_detail.configure(text=f"{self.SLOT_NAMES[idx]} dosyaya yazıldı")
+            except Exception as e:
+                messagebox.showerror("Hata", str(e))
+
+    # ═══════════════════════════════════════
+    #  AC (dosyadan)
     # ═══════════════════════════════════════
     def _load_slot(self, idx):
         if self.engine.recording or self.engine.playing:
             return
 
         fp = filedialog.askopenfilename(
-            title=f"{self.SLOT_NAMES[idx]} için dosya seç",
+            title=f"{self.SLOT_NAMES[idx]} - dosya aç",
             filetypes=[("AutoFlow Makro", "*.autoflow"), ("Hepsi", "*.*")])
 
         if fp:
@@ -626,13 +665,12 @@ class AutoFlowApp:
                 with open(self._slot_path(idx), 'w') as f:
                     json.dump(data, f)
                 self.slot_labels[idx].configure(text=self._slot_info(idx))
-                self.lbl_status.configure(text=f"✓ {self.SLOT_NAMES[idx]} yüklendi", fg=self.SUCCESS)
+                self.lbl_status.configure(text=f"✓ {self.SLOT_NAMES[idx]} yüklendi",
+                                           fg=self.SUCCESS)
                 self.lbl_detail.configure(text=os.path.basename(fp))
             except Exception as e:
                 messagebox.showerror("Hata", str(e))
 
-    # ═══════════════════════════════════════
-    #  ORTAK
     # ═══════════════════════════════════════
     def _prog(self, cur, tot, lp):
         def u():
@@ -662,11 +700,13 @@ class AutoFlowApp:
             self.lbl_detail.configure(text="")
 
     def _disable_all(self):
-        for b in self.slot_play_btns + self.slot_rec_btns + self.slot_load_btns:
+        for b in (self.slot_rec_btns + self.slot_play_btns +
+                  self.slot_save_btns + self.slot_load_btns):
             b.configure(state='disabled')
 
     def _enable_all(self):
-        for b in self.slot_play_btns + self.slot_rec_btns + self.slot_load_btns:
+        for b in (self.slot_rec_btns + self.slot_play_btns +
+                  self.slot_save_btns + self.slot_load_btns):
             b.configure(state='normal')
         self.btn_stop.configure(state='disabled')
 
@@ -679,9 +719,9 @@ class AutoFlowApp:
 
 def main():
     root = tk.Tk()
-    root.title("AutoFlow — EBYS Otomasyon")
-    root.geometry("640x880")
-    root.minsize(580, 800)
+    root.title("AutoFlow — Otomatik Tekrar Yazılımı")
+    root.geometry("680x880")
+    root.minsize(620, 800)
     root.configure(bg="#1e293b")
 
     try:
