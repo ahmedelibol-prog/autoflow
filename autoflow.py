@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import ctypes
+import hashlib
 from ctypes import wintypes
 
 # DPI AWARENESS - Program baslamadan ONCE ayarla
@@ -909,6 +910,4 @@ def main():
 
 
 if __name__ == '__main__':
-    import hashlib
     main()
-
