@@ -399,21 +399,21 @@ class MacroEngine:
 #  ARAYUZ
 # ══════════════════════════════════════════
 class AutoFlowApp:
-    BG = "#f3f3f3"
+    BG = "#f5f6fa"
     CARD = "#ffffff"
-    WIN_BLUE = "#0078d4"
-    WIN_BLUE_HOVER = "#106ebe"
-    WIN_BLUE_LIGHT = "#e5f1fb"
-    WIN_RED = "#c42b1c"
-    WIN_RED_HOVER = "#a82a1f"
-    WIN_GREEN = "#107c10"
-    WIN_GREEN_HOVER = "#0e6e0e"
-    WIN_ORANGE = "#ca5010"
-    TEXT = "#323130"
-    TEXT2 = "#605e5c"
-    TEXT3 = "#a19f9d"
-    BORDER = "#d1d1d1"
-    BORDER_LIGHT = "#edebe9"
+    WIN_BLUE = "#2b579a"         # Office koyu mavi
+    WIN_BLUE_HOVER = "#1e3f73"
+    WIN_BLUE_LIGHT = "#eef2f9"
+    WIN_RED = "#4a5568"          # Koyu gri-lacivert (durdur)
+    WIN_RED_HOVER = "#2d3748"
+    WIN_GREEN = "#3a7ca5"        # Celik mavisi (oynat)
+    WIN_GREEN_HOVER = "#2c6080"
+    WIN_ORANGE = "#8b6914"       # Koyu hardal (uyari)
+    TEXT = "#2d3436"
+    TEXT2 = "#636e72"
+    TEXT3 = "#b2bec3"
+    BORDER = "#dfe6e9"
+    BORDER_LIGHT = "#f0f3f5"
 
     MACROS_DIR = os.path.join(os.path.expanduser("~"), ".autoflow")
 
@@ -441,12 +441,12 @@ class AutoFlowApp:
 
     def _build(self):
         self.root.configure(bg=self.BG)
-        main = tk.Frame(self.root, bg=self.BG, padx=30, pady=24)
+        main = tk.Frame(self.root, bg=self.BG, padx=24, pady=16)
         main.pack(fill='both', expand=True)
 
         # BASLIK
         hdr = tk.Frame(main, bg=self.BG)
-        hdr.pack(fill='x', pady=(0, 20))
+        hdr.pack(fill='x', pady=(0, 12))
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side='left')
@@ -462,7 +462,7 @@ class AutoFlowApp:
         # TALIMAT
         info_card = tk.Frame(main, bg=self.WIN_BLUE_LIGHT,
                              highlightbackground=self.WIN_BLUE, highlightthickness=1)
-        info_card.pack(fill='x', pady=(0, 20))
+        info_card.pack(fill='x', pady=(0, 12))
         info_inner = tk.Frame(info_card, bg=self.WIN_BLUE_LIGHT, padx=18, pady=12)
         info_inner.pack(fill='x')
 
@@ -478,7 +478,7 @@ class AutoFlowApp:
         # SLOT
         slot_card = tk.Frame(main, bg=self.CARD,
                              highlightbackground=self.BORDER, highlightthickness=1)
-        slot_card.pack(fill='x', pady=(0, 16))
+        slot_card.pack(fill='x', pady=(0, 10))
         slot_inner = tk.Frame(slot_card, bg=self.CARD, padx=20, pady=16)
         slot_inner.pack(fill='x')
 
@@ -502,8 +502,8 @@ class AutoFlowApp:
 
         self.btn_rec = tk.Button(main_btns, text="● KAYDET",
             font=("Segoe UI", 12, "bold"),
-            bg=self.WIN_RED, fg="white",
-            activebackground=self.WIN_RED_HOVER, activeforeground="white",
+            bg="#2b579a", fg="white",
+            activebackground="#1e3f73", activeforeground="white",
             relief='flat', cursor='hand2', bd=0, pady=14,
             command=self._rec)
         self.btn_rec.pack(side='left', fill='x', expand=True, padx=(0, 5))
@@ -539,7 +539,7 @@ class AutoFlowApp:
         # AYARLAR
         set_card = tk.Frame(main, bg=self.CARD,
                             highlightbackground=self.BORDER, highlightthickness=1)
-        set_card.pack(fill='x', pady=(0, 16))
+        set_card.pack(fill='x', pady=(0, 10))
         set_inner = tk.Frame(set_card, bg=self.CARD, padx=20, pady=14)
         set_inner.pack(fill='x')
 
@@ -589,7 +589,7 @@ class AutoFlowApp:
             disabledforeground="white",
             relief='flat', cursor='hand2', bd=0, pady=14,
             command=self._stop, state='disabled')
-        self.btn_stop.pack(fill='x', pady=(0, 16))
+        self.btn_stop.pack(fill='x', pady=(0, 10))
 
         # DURUM
         stat_card = tk.Frame(main, bg=self.CARD,
@@ -617,7 +617,7 @@ class AutoFlowApp:
                                          style="Win.Horizontal.TProgressbar")
 
         tk.Label(main, text="AutoFlow v10.0",
-                 font=("Segoe UI", 8), fg=self.TEXT3, bg=self.BG).pack(pady=(12, 0))
+                 font=("Segoe UI", 8), fg=self.TEXT3, bg=self.BG).pack(pady=(6, 0))
 
     # ═══════════════════════════════════════
     def _rec(self):
@@ -798,13 +798,117 @@ class AutoFlowApp:
 def main():
     root = tk.Tk()
     root.title("AutoFlow — Otomatik Tekrar Yazılımı")
-    root.geometry("620x680")
-    root.minsize(560, 620)
-    root.configure(bg="#f3f3f3")
+    root.geometry("620x780")
+    root.minsize(560, 720)
+    root.configure(bg="#f5f6fa")
 
-    AutoFlowApp(root)
+    # Lisans kontrolu
+    license_file = os.path.join(os.path.expanduser("~"), ".autoflow", "license.json")
+
+    def check_license():
+        if not os.path.exists(license_file):
+            return False
+        try:
+            with open(license_file, 'r') as f:
+                data = json.load(f)
+            key = data.get('key', '')
+            stored_hash = data.get('hash', '')
+            expected = hashlib.md5((key + "AutoFlow2025Key").encode()).hexdigest()[:16]
+            return stored_hash == expected
+        except:
+            return False
+
+    def verify_key(key):
+        key = key.strip().upper()
+        if len(key) != 18:
+            return False
+        parts = key.split('-')
+        if len(parts) != 4 or parts[0] != 'AF':
+            return False
+        valid_chars = set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        for p in parts[1:]:
+            if len(p) != 4 or not all(c in valid_chars for c in p):
+                return False
+        code = parts[1] + parts[2] + parts[3]
+        check = hashlib.md5((code + "AutoFlow2025Key").encode()).hexdigest()
+        return int(check[0], 16) < 14
+
+    def activate(key):
+        key = key.strip().upper()
+        if not verify_key(key):
+            return False
+        os.makedirs(os.path.dirname(license_file), exist_ok=True)
+        data = {
+            'key': key,
+            'hash': hashlib.md5((key + "AutoFlow2025Key").encode()).hexdigest()[:16]
+        }
+        with open(license_file, 'w') as f:
+            json.dump(data, f)
+        return True
+
+    def show_license_screen():
+        frame = tk.Frame(root, bg="#f5f6fa")
+        frame.pack(fill='both', expand=True)
+
+        center = tk.Frame(frame, bg="#f5f6fa")
+        center.place(relx=0.5, rely=0.45, anchor='center')
+
+        tk.Label(center, text="AutoFlow", font=("Segoe UI", 30, "bold"),
+                 fg="#2b579a", bg="#f5f6fa").pack(pady=(0, 4))
+        tk.Label(center, text="Otomatik Tekrar Yazılımı",
+                 font=("Segoe UI", 11), fg="#636e72", bg="#f5f6fa").pack(pady=(0, 30))
+
+        card = tk.Frame(center, bg="white", highlightbackground="#dfe6e9",
+                        highlightthickness=1, padx=40, pady=30)
+        card.pack()
+
+        tk.Label(card, text="Lisans Kodunuzu Girin",
+                 font=("Segoe UI", 13, "bold"), fg="#2d3436", bg="white").pack(anchor='w', pady=(0, 14))
+
+        tk.Label(card, text="Lisans Kodu", font=("Segoe UI", 9),
+                 fg="#636e72", bg="white").pack(anchor='w', pady=(0, 4))
+
+        entry = tk.Entry(card, font=("Consolas", 15), width=22,
+                         bg="#f5f6fa", fg="#2d3436", insertbackground="#2d3436",
+                         relief='solid', bd=1,
+                         highlightbackground="#dfe6e9", highlightcolor="#2b579a")
+        entry.pack(fill='x', ipady=8, pady=(0, 4))
+        entry.insert(0, "AF-")
+        entry.focus()
+
+        tk.Label(card, text="Örnek: AF-A2B4-C6D8-E9F1",
+                 font=("Segoe UI", 8), fg="#b2bec3", bg="white").pack(anchor='w', pady=(0, 16))
+
+        msg_lbl = tk.Label(card, text="", font=("Segoe UI", 9), bg="white")
+        msg_lbl.pack()
+
+        def do_activate():
+            key = entry.get().strip().upper()
+            if activate(key):
+                msg_lbl.configure(text="✓ Lisans aktif! Açılıyor...", fg="#2b579a")
+                root.after(1500, lambda: (frame.destroy(), AutoFlowApp(root)))
+            else:
+                msg_lbl.configure(text="Geçersiz lisans kodu!", fg="#c42b1c")
+
+        btn = tk.Button(card, text="Etkinleştir", font=("Segoe UI", 12, "bold"),
+                        bg="#2b579a", fg="white",
+                        activebackground="#1e3f73", activeforeground="white",
+                        relief='flat', cursor='hand2', bd=0, padx=20, pady=10,
+                        command=do_activate)
+        btn.pack(fill='x', pady=(10, 0))
+
+        tk.Label(center, text="Lisans kodu satın almak için: autoflow.com.tr",
+                 font=("Segoe UI", 9), fg="#636e72", bg="#f5f6fa").pack(pady=(20, 0))
+
+    if check_license():
+        AutoFlowApp(root)
+    else:
+        show_license_screen()
+
     root.mainloop()
 
 
 if __name__ == '__main__':
+    import hashlib
     main()
+
