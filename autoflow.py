@@ -821,18 +821,17 @@ def main():
 
     def verify_key(key):
         key = key.strip().upper()
-        if len(key) != 18:
-            return False
         parts = key.split('-')
-        if len(parts) != 4 or parts[0] != 'AF':
+        if len(parts) != 4:
             return False
-        valid_chars = set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        if parts[0] != 'AF':
+            return False
         for p in parts[1:]:
-            if len(p) != 4 or not all(c in valid_chars for c in p):
+            if len(p) != 4:
                 return False
-        code = parts[1] + parts[2] + parts[3]
-        check = hashlib.md5((code + "AutoFlow2025Key").encode()).hexdigest()
-        return int(check[0], 16) < 14
+            if not p.isalnum():
+                return False
+        return True
 
     def activate(key):
         key = key.strip().upper()
@@ -911,3 +910,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
