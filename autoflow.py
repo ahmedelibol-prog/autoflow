@@ -162,9 +162,7 @@ class MacroEngine:
 
         cls_name = event.__class__.__name__
 
-        # Move olaylarinda GERCEK piksel konumunu al (Windows API ile)
         if cls_name == 'MoveEvent':
-            # Hizli hareket kaydi - 15ms'de bir
             now = time.time()
             if now - self._last_move_rec_time < 0.015:
                 return
@@ -172,9 +170,17 @@ class MacroEngine:
 
             # DPI-aware gercek konum
             real_x, real_y = get_cursor_pos()
-            # Yeni event olustur (gercek koordinatla)
             new_event = mouse.MoveEvent(x=real_x, y=real_y, time=event.time)
             self._mouse_recorded.append(new_event)
+
+        elif cls_name == 'ButtonEvent':
+            # Tiklamadan once gercek konumu kaydet
+            real_x, real_y = get_cursor_pos()
+            # Once konum kaydet
+            self._mouse_recorded.append(mouse.MoveEvent(x=real_x, y=real_y, time=event.time))
+            # Sonra tiklama kaydet
+            self._mouse_recorded.append(event)
+
         else:
             self._mouse_recorded.append(event)
 
@@ -911,4 +917,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
