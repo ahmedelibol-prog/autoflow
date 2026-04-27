@@ -300,31 +300,32 @@ class MacroEngine:
                 pass
 
     def _play_mouse(self, event):
-        """Direkt Windows API ile fare oynatma - GERCEK PIKSEL"""
+        """Mouse kutuphanesi ile fare oynatma"""
         cls_name = event.__class__.__name__
 
         if cls_name == 'MoveEvent':
-            # DIREKT set_cursor_pos - DPI-aware, piksel piksel
-            set_cursor_pos(event.x, event.y)
+            # mouse.move absolute - v9'da calisan yontem
+            try:
+                ctypes.windll.user32.SetCursorPos(int(event.x), int(event.y))
+            except:
+                try:
+                    mouse.move(event.x, event.y, absolute=True, duration=0)
+                except:
+                    pass
 
         elif cls_name == 'ButtonEvent':
             btn = event.button
             et = event.event_type
 
-            if et == 'down' and btn in BTN_DOWN:
-                mouse_btn_event(BTN_DOWN[btn])
-            elif et == 'up' and btn in BTN_UP:
-                mouse_btn_event(BTN_UP[btn])
-            elif et == 'double' and btn in BTN_DOWN:
-                # Cift tiklama = 2 kez bas-birak
-                mouse_btn_event(BTN_DOWN[btn])
-                mouse_btn_event(BTN_UP[btn])
-                time.sleep(0.05)
-                mouse_btn_event(BTN_DOWN[btn])
-                mouse_btn_event(BTN_UP[btn])
+            if et == 'down':
+                mouse.press(button=btn)
+            elif et == 'up':
+                mouse.release(button=btn)
+            elif et == 'double':
+                mouse.double_click(button=btn)
 
         elif cls_name == 'WheelEvent':
-            mouse_wheel(event.delta)
+            mouse.wheel(event.delta)
 
     def stop(self):
         self.stop_flag = True
